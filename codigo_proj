@@ -1,0 +1,139 @@
+#include <Wire.h>
+#include <Adafruit_LiquidCrystal.h>
+#include <Keypad.h>
+
+// Definições de pinos
+#define pinLedAlta 11    // LED verde: aumenta pH
+#define pinLedBaixa 12   // LED azul: diminui pH
+#define pinLedAlerta 13  // LED vermelho: alerta
+
+#define tempo 1000       // Tempo de atualização em milissegundos
+
+// LCD I2C lib
+Adafruit_LiquidCrystal lcd_1(0);
+
+// Teclado 4x4
+const byte ROWS = 4;
+const byte COLS = 4;
+char keys[ROWS][COLS] = {
+  {'1','2','3','A'},
+  {'4','5','6','B'},
+  {'7','8','9','C'},
+  {'.','0','#','D'}
+};
+
+byte rowPins[ROWS] = {2, 3, 4, 5}; 
+byte colPins[COLS] = {6, 7, 8, 9};
+
+Keypad teclado = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+// variaveis ph
+float phMin = 0.0;
+float phMax = 14.0;
+bool limitesDefinidos = false;
+String entrada = "";
+bool digitandoMin = true;
+
+// Tipos de peixe e faixas de pH
+enum TipoPeixe {GUPPY, BETTA, NEON_TETRA, MOLLY, PLATY, CICLIDEO_AFRICANO, TANGANYIKA_CICHLID, DISCUS, ANGELFISH, CUSTOM};
+TipoPeixe peixeEscolhido = CUSTOM;
+
+float faixaPhMin[] = {6.8, 6.5, 5.5, 7.5, 7.0, 7.5, 8.0, 6.0, 6.5};  // Mínimos de cada peixe
+float faixaPhMax[] = {7.8, 7.5, 7.0, 8.5, 8.2, 8.5, 9.0, 7.0, 7.5};  // Máximos de cada peixe
+String nomesPeixes[] = {"Guppy", "Betta", "Neon Tetra", "Molly", "Platy", "Ciclideo Africano", "Tanganyika Cichlid", "Discus", "Angelfish"};
+
+int menuIndex = 0;  // ini indice menu
+
+void setup() {
+  pinMode(pinLedAlta, OUTPUT);
+  pinMode(pinLedBaixa, OUTPUT);
+  pinMode(pinLedAlerta, OUTPUT);
+
+  lcd_1.begin(16, 2);
+  lcd_1.setBacklight(1);
+
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("Selecione o");
+    lcd_1.setCursor(0, 1);
+  lcd_1.print("Peixe");
+
+  Serial.begin(9600);
+}
+
+void loop() {
+  if (!limitesDefinidos) {
+    // menu
+    char tecla = teclado.getKey();
+    if (tecla) {
+      //seleção do peixe (A)
+      if (tecla == 'A') {
+        peixeEscolhido = (TipoPeixe)menuIndex;
+        phMin = faixaPhMin[menuIndex];
+        phMax = faixaPhMax[menuIndex];
+        exibirFaixa();
+      }else if (tecla >= '1' && tecla <= '9') {
+        
+        menuIndex = tecla - '1';  
+        exibirMenu();
+      }
+    }
+  } else {
+    // Monitoramento do pH
+    int leitura = analogRead(A0);
+    float ph = map(leitura, 0, 1023, 0, 1400) / 100.0;
+
+    lcd_1.clear();
+    lcd_1.setCursor(0, 0);
+    lcd_1.print("pH atual:");
+    lcd_1.setCursor(0, 1);
+    lcd_1.print(ph, 2);
+
+    Serial.print("pH atual: ");
+    Serial.println(ph);
+
+    // Alerta LED vermelho
+    if (ph < phMin || ph > phMax) {
+      digitalWrite(pinLedAlerta, HIGH);
+    } else {
+      digitalWrite(pinLedAlerta, LOW);
+    }
+
+    // Comportas LEDs
+    if (ph < phMin) {
+      digitalWrite(pinLedBaixa, HIGH);  // solução acida
+      digitalWrite(pinLedAlta, LOW);
+    } else if (ph > phMax) {
+      digitalWrite(pinLedAlta, HIGH);   // solução base
+      digitalWrite(pinLedBaixa, LOW);
+    } else {
+      digitalWrite(pinLedAlta, LOW);
+      digitalWrite(pinLedBaixa, LOW);
+    }
+
+    delay(tempo);
+  }
+}
+
+void exibirMenu() {
+  lcd_1.clear();
+  lcd_1.setCursor(0, 0);
+  lcd_1.print(nomesPeixes[menuIndex]);  // nome do peixe
+  lcd_1.setCursor(0, 1);
+  lcd_1.print("pH: ");
+  lcd_1.print(faixaPhMin[menuIndex], 1);
+  lcd_1.print(" - ");
+  lcd_1.print(faixaPhMax[menuIndex], 1);
+  lcd_1.print("   ");
+}
+
+void exibirFaixa() {
+  lcd_1.clear();
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("pH Min:");
+  lcd_1.print(phMin, 1);
+  lcd_1.setCursor(0, 1);
+  lcd_1.print("pH Max:");
+  lcd_1.print(phMax, 1);
+  limitesDefinidos = true;
+  delay(2000); //tempo para usuario ver
+}
